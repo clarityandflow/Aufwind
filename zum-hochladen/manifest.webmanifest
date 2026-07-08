@@ -1,0 +1,20 @@
+{
+  "id": "/aufwind/",
+  "name": "Aufwind — 360° Transformation",
+  "short_name": "Aufwind",
+  "description": "Deine persönliche 360°-Transformation: Routine, Training, Essen & Fortschritt.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#050F26",
+  "theme_color": "#050F26",
+  "lang": "de",
+  "dir": "ltr",
+  "categories": ["health", "lifestyle", "fitness"],
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
