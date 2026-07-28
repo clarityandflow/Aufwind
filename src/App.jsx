@@ -20,7 +20,7 @@ import {
 // ============================================================
 
 const STORE_KEY = "aufwind-v5";
-const APP_VERSION = "1.9.0";
+const APP_VERSION = "1.9.1";
 
 // Cinematic Dark-Theme (Farbwelt des Intros)
 const T = {
@@ -210,8 +210,10 @@ export default function App() {
   useEffect(() => { attachVisibilityRescheduler(); scheduleAll(loadReminders()); }, []);
 
   const checks = (data && data.history[tKey]) || {};
-  const done = todayItems.filter((i) => checks[i.id]).length;
-  const total = todayItems.length;
+  // Start-Ring zählt nur Essen + Routine (Training läuft im Training-Tab)
+  const heuteDayItems = todayItems.filter((i) => i.group !== "Bewegung");
+  const done = heuteDayItems.filter((i) => checks[i.id]).length;
+  const total = heuteDayItems.length;
   const pct = total ? done / total : 0;
   function toggle(id) { setData((p) => { const n = { ...p, history: { ...p.history } }; const day = { ...(n.history[tKey] || {}) }; day[id] = !day[id]; n.history[tKey] = day; saveData(n); return n; }); }
   function addWeight(kg) { setData((p) => { const n = { ...p, weights: { ...(p.weights || {}) } }; n.weights[tKey] = kg; saveData(n); return n; }); }
@@ -375,11 +377,12 @@ function Heute({ done, total, pct, focus, focusDesc, week7, items, checks, toggl
   const hour = now.getHours();
   const greeting = hour < 11 ? "Guten Morgen" : hour < 17 ? "Guten Tag" : "Guten Abend";
   // Nächster offener Schritt in der Reihenfolge des Tages
-  const nextIdx = items.findIndex((i) => !checks[i.id]);
-  const next = nextIdx >= 0 ? items[nextIdx] : null;
+  // Training läuft im Training-Tab – auf dem Start nur Essen + Routine
+  const heuteItems = items.filter((i) => i.group !== "Bewegung");
+  const nextIdx = heuteItems.findIndex((i) => !checks[i.id]);
+  const next = nextIdx >= 0 ? heuteItems[nextIdx] : null;
   const allDone = !next;
-  // Essen zuerst, Training zuletzt (Start dreht sich primär ums Essen)
-  const phaseOrder = ["Morgen", "Mittag", "Abend", "Bewegung"].filter((g) => items.some((i) => i.group === g));
+  const phaseOrder = ["Morgen", "Mittag", "Abend"].filter((g) => heuteItems.some((i) => i.group === g));
   const [openPhases, setOpenPhases] = useState(() => ({ Morgen: true, Mittag: true, Abend: true }));
   const [balanceOpen, setBalanceOpen] = useState(false);
   const RCF = "'Roboto Condensed', 'Roboto', sans-serif";
