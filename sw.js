@@ -1,5 +1,5 @@
 // Aufwind Service Worker — App-Shell offline + Laufzeit-Cache für Fonts.
-const VERSION = "aufwind-v1.7.2";
+const VERSION = "aufwind-v1.9.0";
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 
