@@ -1,5 +1,5 @@
 // Aufwind Service Worker — App-Shell offline + Laufzeit-Cache für Fonts.
-const VERSION = "aufwind-v1.5.0";
+const VERSION = "aufwind-v1.7.2";
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 
@@ -43,17 +43,15 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Gleiche Origin: Cache zuerst (App-Shell / Icons).
+  // Gleiche Origin: Netzwerk zuerst (immer frischer Stand nach Deploy),
+  // Cache nur als Offline-Fallback.
   if (url.origin === self.location.origin) {
     event.respondWith(
-      caches.match(req).then((cached) =>
-        cached ||
-        fetch(req).then((res) => {
-          const copy = res.clone();
-          caches.open(SHELL).then((c) => c.put(req, copy));
-          return res;
-        }).catch(() => cached)
-      )
+      fetch(req).then((res) => {
+        const copy = res.clone();
+        caches.open(SHELL).then((c) => c.put(req, copy));
+        return res;
+      }).catch(() => caches.match(req))
     );
     return;
   }
