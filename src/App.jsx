@@ -20,7 +20,7 @@ import {
 // ============================================================
 
 const STORE_KEY = "aufwind-v5";
-const APP_VERSION = "1.9.1";
+const APP_VERSION = "1.10.0";
 
 // Cinematic Dark-Theme (Farbwelt des Intros)
 const T = {
@@ -280,9 +280,9 @@ export default function App() {
       </header>
 
       <main style={{ flex: 1, overflowY: "auto", padding: "6px 20px 92px" }}>
-        {tab === "heute" && <Heute {...{ done, total, pct, focus, focusDesc, week7, items: todayItems, checks, toggle, streak, onStart: startExercise, now, moveToday, moveKcalToday, weekMove, moveGoal: MOVE_GOAL, onMoveType, profile, weightKg, intakeKcal, proteinIn, exerciseKcal: moveKcalToday, extras: extrasToday, onRemoveExtra: removeExtraMeal, onOpenProfile: () => setProfileOpen(true), onOpenMealLog: () => setMealLogOpen(true) }} />}
+        {tab === "heute" && <Heute {...{ focus, focusDesc, items: todayItems, checks, toggle, now, moveToday, moveKcalToday, weekMove, moveGoal: MOVE_GOAL, onMoveType, profile, weightKg, intakeKcal, proteinIn, onGoTraining: () => { setTab("training"); setOpen(null); }, onOpenProfile: () => setProfileOpen(true), onOpenMealLog: () => setMealLogOpen(true), extras: extrasToday, onRemoveExtra: removeExtraMeal }} />}
         {tab === "essen" && <Essen now={now} onPlanChanged={() => setPlanVersion((v) => v + 1)} />}
-        {tab === "training" && <Training open={open} setOpen={setOpen} onStart={startExercise} />}
+        {tab === "training" && <Training open={open} setOpen={setOpen} onStart={startExercise} todayItems={todayItems} checks={checks} toggle={toggle} focus={focus} focusDesc={focusDesc} />}
         {tab === "verlauf" && <Verlauf {...{ streak, best, avg7, week7, heat, weights: (data.weights || {}), addWeight, profile, history: data.history, bloodSugar: (data.bloodSugar || {}), addBloodSugar, weightKg, intakeKcal, proteinIn, exerciseKcal: moveKcalToday, extras: extrasToday, onRemoveExtra: removeExtraMeal, onOpenProfile: () => setProfileOpen(true), onOpenMealLog: () => setMealLogOpen(true) }} />}
       </main>
 
@@ -373,140 +373,136 @@ const PHASE = {
 const MOVE_TYPES = [["walk", "🚶", "Gelaufen"], ["bike", "🚴", "Rad"], ["other", "💪", "Anderes"]];
 const MOVE_LABEL = { walk: "Gelaufen", bike: "Rad gefahren", other: "Bewegt" };
 
-function Heute({ done, total, pct, focus, focusDesc, week7, items, checks, toggle, streak, onStart, now, moveToday, moveKcalToday, weekMove, moveGoal, onMoveType, profile, weightKg, intakeKcal, proteinIn, exerciseKcal, extras, onRemoveExtra, onOpenProfile, onOpenMealLog }) {
-  const hour = now.getHours();
-  const greeting = hour < 11 ? "Guten Morgen" : hour < 17 ? "Guten Tag" : "Guten Abend";
-  // Nächster offener Schritt in der Reihenfolge des Tages
-  // Training läuft im Training-Tab – auf dem Start nur Essen + Routine
-  const heuteItems = items.filter((i) => i.group !== "Bewegung");
-  const nextIdx = heuteItems.findIndex((i) => !checks[i.id]);
-  const next = nextIdx >= 0 ? heuteItems[nextIdx] : null;
-  const allDone = !next;
-  const phaseOrder = ["Morgen", "Mittag", "Abend"].filter((g) => heuteItems.some((i) => i.group === g));
-  const [openPhases, setOpenPhases] = useState(() => ({ Morgen: true, Mittag: true, Abend: true }));
-  const [balanceOpen, setBalanceOpen] = useState(false);
+function Heute({ focus, focusDesc, items, checks, toggle, now, moveToday, moveKcalToday, weekMove, moveGoal, onMoveType, profile, weightKg, intakeKcal, proteinIn, onGoTraining, onOpenProfile, onOpenMealLog, extras, onRemoveExtra }) {
+  const [openMeal, setOpenMeal] = useState(null);      // aufgeklappte Mahlzeit
+  const [routinesOpen, setRoutinesOpen] = useState(false);
   const RCF = "'Roboto Condensed', 'Roboto', sans-serif";
-  const Chevron = ({ open }) => <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={T.sub} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" style={{ transform: open ? "rotate(180deg)" : "none", transition: "transform .2s" }}><path d="M6 9l6 6 6-6" /></svg>;
+  // Phase/Personen aus dem Essen-Tab übernehmen (read-only)
+  let persons = "solo", phase = "akut";
+  try { persons = localStorage.getItem("aufwind:persons") || "solo"; phase = localStorage.getItem("aufwind:phase") || "akut"; } catch (e) {}
+  const dayPlan = getPlan()[now.getDay()] || {};
+  const routineItems = items.filter((i) => !i.meal && !i.sport);
+  const rDone = routineItems.filter((i) => checks[i.id]).length;
+  const exs = items.filter((i) => i.sport);
+  const exDone = exs.filter((i) => checks[i.id]).length;
+  const mealsToday = SLOTS.filter(([slot]) => dayPlan[slot]);
+  const mealsDone = mealsToday.filter(([slot]) => checks["meal_" + slot]).length;
+
+  const tag = (label, color) => <span style={{ fontSize: 9, fontWeight: 800, letterSpacing: "0.04em", textTransform: "uppercase", color, border: `1px solid ${color}`, borderRadius: 4, padding: "1px 5px", marginLeft: 5 }}>{label}</span>;
 
   return (
     <>
-      {/* Cinematic Hero mit Glow-Ring */}
-      <div style={{ position: "relative", borderRadius: 8, padding: "24px 20px 20px", background: "linear-gradient(135deg, #1E6BFF 0%, #0E5BFF 42%, #0B2C8C 100%)", boxShadow: "0 18px 44px rgba(14,91,255,0.5), inset 0 1px 0 rgba(255,255,255,0.14)", border: "1px solid rgba(120,180,255,0.28)", overflow: "hidden" }}>
-        <div style={{ position: "absolute", top: -40, right: -30, width: 160, height: 160, background: "radial-gradient(circle, rgba(57,201,255,0.4), transparent 65%)", filter: "blur(8px)", pointerEvents: "none" }} />
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <HeroRing pct={pct} done={done} total={total} />
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.85)", fontWeight: 600 }}>{greeting}, Dirk</div>
-            <div style={{ fontFamily: "'Roboto Condensed', 'Roboto', sans-serif", fontSize: 28, fontWeight: 700, color: "#FFC24A", marginTop: 12 }}>🔥 {streak}</div>
-            <div style={{ fontSize: 10.5, color: "rgba(255,255,255,0.75)" }}>Tage am Stück</div>
-          </div>
-        </div>
-        <div style={{ display: "flex", gap: 5, marginTop: 16 }}>
-          {week7.map((w, i) => (
-            <div key={i} style={{ flex: 1, height: 5, borderRadius: 3, background: w.frac > 0 ? `rgba(255,255,255,${0.45 + w.frac * 0.55})` : "rgba(255,255,255,0.22)" }} />
-          ))}
-        </div>
+      {/* HEUTE ESSEN – wie im Essen-Tab */}
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 12, marginBottom: 8 }}>
+        <h3 style={hStyle}>Heute · {WD[now.getDay()]}</h3>
+        <span style={{ fontFamily: RCF, fontSize: 13, fontWeight: 700, color: mealsDone === mealsToday.length && mealsToday.length ? T.green : T.sub }}>{mealsDone}/{mealsToday.length} gegessen</span>
       </div>
-
-      {/* Fokus mit Kontext */}
-      <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-        <div style={{ ...chip, background: T.redSoft, borderColor: `${T.red}66`, color: T.ink }}>
-          <span style={{ width: 7, height: 7, borderRadius: "50%", background: T.red, boxShadow: `0 0 8px ${T.red}` }} />
-          Heute: {focus}
-        </div>
-        {focusDesc && <span style={{ fontSize: 12.5, color: T.sub }}>{focusDesc}</span>}
-      </div>
-
-      {/* JETZT DRAN */}
-      {allDone ? (
-        <div style={{ ...cardBox, marginTop: 12, textAlign: "center", borderColor: `${T.green}66`, boxShadow: `0 0 26px ${T.green}22, inset 0 1px 0 rgba(150,190,255,0.06)` }}>
-          <div style={{ fontSize: 30 }}>🎉</div>
-          <div style={{ fontFamily: "'Roboto Condensed', 'Roboto', sans-serif", fontSize: 20, fontWeight: 700, color: T.ink, marginTop: 4 }}>Tag geschafft!</div>
-          <div style={{ fontSize: 12.5, color: T.sub, marginTop: 3 }}>Alle Schritte erledigt. Stark, Dirk.</div>
-        </div>
-      ) : (
-        <div style={{ position: "relative", marginTop: 12, borderRadius: 8, padding: "16px 18px", background: "linear-gradient(135deg, rgba(255,45,70,0.16), rgba(14,91,255,0.12))", border: `1px solid ${T.red}55`, boxShadow: `0 0 28px ${T.red}22, inset 0 1px 0 rgba(255,255,255,0.06)` }}>
-          <div style={{ fontSize: 10.5, fontWeight: 800, letterSpacing: "0.16em", color: T.red, textTransform: "uppercase", textShadow: `0 0 12px ${T.red}88` }}>Jetzt dran</div>
-          <div style={{ fontFamily: "'Roboto Condensed', 'Roboto', sans-serif", fontSize: 22, fontWeight: 700, color: T.ink, marginTop: 4, lineHeight: 1.15 }}>{next.label}</div>
-          {(next.cue || next.session) && <div style={{ fontSize: 12.5, color: T.sub, marginTop: 4, lineHeight: 1.45 }}>{next.sport ? `Training · ${next.session}` : next.cue}</div>}
-          <div style={{ display: "flex", gap: 9, marginTop: 14 }}>
-            {next.sport ? (
-              <button onClick={() => onStart({ name: next.label, cue: next.cue, reps: next.reps }, next.id)} style={{ flex: 1, display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 7, background: T.red, color: "#fff", border: "none", borderRadius: 6, padding: "13px", fontSize: 15, fontWeight: 700, cursor: "pointer", boxShadow: `0 8px 20px ${T.red}44` }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="#fff"><path d="M6 4l14 8-14 8z" /></svg>Übung starten
-              </button>
-            ) : (
-              <button onClick={() => toggle(next.id)} style={{ flex: 1, background: T.red, color: "#fff", border: "none", borderRadius: 6, padding: "13px", fontSize: 15, fontWeight: 700, cursor: "pointer", boxShadow: `0 8px 20px ${T.red}44` }}>{next.meal ? "Gegessen ✓" : "Erledigt ✓"}</button>
-            )}
-          </div>
-          <div style={{ fontSize: 11, color: T.sub, marginTop: 10, textAlign: "center" }}>Schritt {done + 1} von {total} heute</div>
-        </div>
-      )}
-
-      {!profile.set && (
-        <BalanceCard profile={profile} weightKg={weightKg} intake={intakeKcal} proteinIn={proteinIn} exerciseKcal={exerciseKcal} onOpenProfile={onOpenProfile} onOpenMealLog={onOpenMealLog} />
-      )}
-
-      {/* DEIN TAG – Essen zuerst, Training zuletzt */}
-      <div style={{ marginTop: 20 }}>
-        <h3 style={{ ...hStyle, marginBottom: 10 }}>Dein Tag · Essen zuerst</h3>
-        {phaseOrder.map((g) => {
-          const list = items.filter((i) => i.group === g);
-          const dn = list.filter((i) => checks[i.id]).length;
-          const ph = PHASE[g] || PHASE.Morgen;
-          const isOpen = !!openPhases[g];
-          const sess = g === "Bewegung" && list[0] ? list[0].session : null;
+      <div style={{ ...cardBox, padding: "6px 14px" }}>
+        {mealsToday.length === 0 && (
+          <div style={{ padding: "16px 2px", textAlign: "center", fontSize: 13, color: T.sub, lineHeight: 1.5 }}>Für heute ist kein Gericht hinterlegt.<br />Im Essen-Tab per ✨ KI planen oder sag mir, was du isst.</div>
+        )}
+        {SLOTS.map(([slot, label]) => {
+          const m = dayPlan[slot]; if (!m) return null;
+          const mid = "meal_" + slot;
+          const eaten = !!checks[mid];
+          const isOpen = openMeal === slot;
           return (
-            <div key={g} style={{ ...cardBox, marginBottom: 10, padding: 0, overflow: "hidden" }}>
-              <button onClick={() => setOpenPhases((p) => ({ ...p, [g]: !p[g] }))} style={{ width: "100%", minHeight: 54, display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", background: dn === list.length && list.length ? "rgba(34,229,138,0.06)" : "transparent", border: "none", cursor: "pointer", textAlign: "left" }}>
-                <span style={{ fontSize: 17 }}>{ph.icon}</span>
-                <span style={{ flex: 1 }}>
-                  <span style={{ fontSize: 14.5, fontWeight: 700, color: ph.color }}>{ph.label}</span>
-                  {sess && <span style={{ fontSize: 12, color: T.sub }}> · {sess}</span>}
-                </span>
-                <span style={{ fontFamily: RCF, fontSize: 14, fontWeight: 700, color: dn === list.length && list.length ? T.green : T.sub }}>{dn}/{list.length}</span>
-                <Chevron open={isOpen} />
-              </button>
+            <div key={slot} style={{ borderTop: `1px solid ${T.line}`, padding: "12px 0" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 11 }}>
+                <button onClick={() => toggle(mid)} aria-label="Gegessen" className="aw-row" style={{ flex: "0 0 28px", width: 28, height: 28, marginTop: 2, borderRadius: "50%", border: `2px solid ${eaten ? T.green : T.line}`, background: eaten ? T.green : "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 }}>
+                  {eaten && <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#031018" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+                </button>
+                <button onClick={() => setOpenMeal(isOpen ? null : slot)} style={{ flex: 1, background: "transparent", border: "none", padding: 0, textAlign: "left", cursor: "pointer", minHeight: 44 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 9.5, fontWeight: 800, letterSpacing: "0.12em", textTransform: "uppercase", color: T.sub, marginBottom: 4 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: 2, background: catColor(m.cat) }} />{label}
+                    {m.kcal ? <span style={{ letterSpacing: 0, fontWeight: 600 }}>· {m.kcal} kcal · {m.protein} g Prot.</span> : null}
+                  </div>
+                  <div style={{ fontSize: 14.5, fontWeight: 700, color: T.ink, lineHeight: 1.3, textDecoration: eaten ? "line-through" : "none", opacity: eaten ? 0.5 : 1 }}>
+                    {m.name}
+                    {m.edocs && tag(`E-Docs${m.serves ? " · " + m.serves : ""}`, TAGCOLOR.edocs)}
+                    {m.prep && tag("Prep", TAGCOLOR.prep)}
+                  </div>
+                  {!isOpen && !eaten && <div style={{ fontSize: 11.5, color: T.sub, marginTop: 3 }}>Antippen für Zutaten & Kochanleitung</div>}
+                </button>
+              </div>
               {isOpen && (
-                <div style={{ padding: "0 14px 6px" }}>
-                  {list.map((it) => {
-                    const isDone = !!checks[it.id];
-                    const isNext = next && it.id === next.id;
-                    return (
-                      <div key={it.id} style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "10px 0", borderTop: `1px solid ${T.line}`, minHeight: 44 }}>
-                        <button onClick={() => toggle(it.id)} className="aw-row" style={{ flex: "0 0 28px", width: 28, height: 28, borderRadius: "50%", border: `2px solid ${isDone ? T.green : isNext ? T.red : T.line}`, background: isDone ? T.green : "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0, fontSize: it.meal ? 14 : 12 }}>
-                          {isDone ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#031018" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" /></svg> : (it.meal ? it.emoji : "")}
-                        </button>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: 15, color: T.ink, lineHeight: 1.3, textDecoration: isDone ? "line-through" : "none", opacity: isDone ? 0.45 : 1 }}>{it.label}</div>
-                          {it.cue && !isDone && <div style={{ fontSize: 12, color: T.sub, marginTop: 3, lineHeight: 1.4 }}>{it.cue}</div>}
-                        </div>
-                        {it.sport && !isDone && (
-                          <button onClick={() => onStart({ name: it.label, cue: it.cue, reps: it.reps }, it.id)} aria-label="Übung starten" className="aw-row" style={{ flex: "0 0 auto", display: "inline-flex", alignItems: "center", gap: 5, background: T.red, color: "#fff", border: "none", borderRadius: 4, padding: "0 12px", minHeight: 44, fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: `0 3px 10px ${T.red}4d` }}>
-                            <svg width="10" height="10" viewBox="0 0 24 24" fill="#fff"><path d="M6 4l14 8-14 8z" /></svg>Start
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
+                <div style={{ marginTop: 10, marginLeft: 39 }}>
+                  {phase === "akut" && m.akutNote && <div style={{ fontSize: 11.5, color: "#E0A83E", background: "rgba(224,168,62,0.10)", border: "1px solid rgba(224,168,62,0.35)", borderRadius: 6, padding: "8px 10px", marginBottom: 8, lineHeight: 1.4 }}>⚠ {m.akutNote}</div>}
+                  {phase === "normal" && m.normalExtra && <div style={{ fontSize: 11.5, color: T.green, background: "rgba(34,229,138,0.10)", border: `1px solid ${T.green}44`, borderRadius: 6, padding: "8px 10px", marginBottom: 8 }}>Normal-Phase: {m.normalExtra}</div>}
+                  <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: T.cyan, margin: "6px 0 6px" }}>Zutaten ({persons === "both" ? "Dirk + Bianca" : "Nur Dirk"}{m.ns ? " · fixe Portion" : ""})</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {m.ing.map((ing, k) => {
+                      if (ing.b == null) return <span key={k} style={chipD}>{ing.n}</span>;
+                      const val = scaleAmt(m, ing, persons);
+                      return <span key={k} style={chipD}><b style={{ color: T.cyan }}>{val}</b>{ing.u ? " " + ing.u : ""} {ing.n}</span>;
+                    })}
+                  </div>
+                  <div style={{ fontSize: 9.5, fontWeight: 800, letterSpacing: "0.08em", textTransform: "uppercase", color: T.cyan, margin: "12px 0 4px" }}>Kochanleitung</div>
+                  <ol style={{ margin: "2px 0 0 18px", padding: 0 }}>{m.steps.map((s, k) => <li key={k} style={{ fontSize: 12.5, color: T.ink, marginBottom: 5, lineHeight: 1.45 }}>{s}</li>)}</ol>
+                  <button onClick={() => { toggle(mid); setOpenMeal(null); }} style={{ width: "100%", minHeight: 46, marginTop: 12, background: eaten ? T.soft : T.green, color: eaten ? T.ink : "#04121f", border: eaten ? `1px solid ${T.line}` : "none", borderRadius: 6, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>{eaten ? "Doch nicht gegessen" : "Gegessen ✓"}</button>
                 </div>
               )}
             </div>
           );
         })}
       </div>
-
       {profile.set && (
-        <button onClick={onOpenMealLog} style={{ width: "100%", minHeight: 48, marginTop: 4, background: T.soft, color: T.ink, border: `1px solid ${T.line}`, borderRadius: 6, fontSize: 13.5, fontWeight: 700, cursor: "pointer" }}>+ Essen frei eintragen (Abweichung)</button>
+        <button onClick={onOpenMealLog} style={{ width: "100%", minHeight: 46, marginTop: 8, background: T.soft, color: T.ink, border: `1px solid ${T.line}`, borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>+ Essen abweichend eintragen</button>
+      )}
+      {extras && extras.length > 0 && (
+        <div style={{ ...cardBox, marginTop: 8, padding: "8px 14px" }}>
+          {extras.map((e, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: i < extras.length - 1 ? `1px solid ${T.line}` : "none" }}>
+              <span style={{ fontSize: 15 }}>🍽️</span>
+              <span style={{ flex: 1, fontSize: 13.5, color: T.ink }}>{e.name}</span>
+              <span style={{ fontSize: 12.5, color: T.sub, fontWeight: 700 }}>{e.kcal} kcal</span>
+              <button onClick={() => onRemoveExtra(i)} aria-label="Entfernen" style={{ background: "transparent", border: "none", color: T.sub, fontSize: 20, cursor: "pointer", lineHeight: 1, minHeight: 44, minWidth: 32 }}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* KACHELN: Meine Trainings + Routinen */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 14 }}>
+        <button onClick={onGoTraining} style={{ background: "linear-gradient(135deg, #1E6BFF, #0B2C8C)", border: "1px solid rgba(120,180,255,0.3)", borderRadius: 8, padding: "16px 14px", minHeight: 110, textAlign: "left", cursor: "pointer", color: "#fff", display: "flex", flexDirection: "column", justifyContent: "space-between", boxShadow: `0 10px 24px ${T.blue}44` }}>
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round"><path d="M3 9v6M6.5 6.5v11M17.5 6.5v11M21 9v6M6.5 12h11" /></svg>
+          <div>
+            <div style={{ fontFamily: RCF, fontSize: 16, fontWeight: 800 }}>Meine Trainings</div>
+            <div style={{ fontSize: 11, opacity: 0.9, marginTop: 2 }}>{focus}{exs.length ? ` · ${exDone}/${exs.length}` : ""}</div>
+          </div>
+        </button>
+        <button onClick={() => setRoutinesOpen((o) => !o)} style={{ background: rDone === routineItems.length && routineItems.length ? "rgba(34,229,138,0.14)" : T.card, border: `1px solid ${rDone === routineItems.length && routineItems.length ? T.green + "66" : T.line}`, borderRadius: 8, padding: "16px 14px", minHeight: 110, textAlign: "left", cursor: "pointer", color: T.ink, display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+          <span style={{ fontSize: 22 }}>💊</span>
+          <div>
+            <div style={{ fontFamily: RCF, fontSize: 16, fontWeight: 800 }}>Routinen</div>
+            <div style={{ fontSize: 11, color: T.sub, marginTop: 2 }}>Tabletten, Wasser … · <b style={{ color: rDone === routineItems.length && routineItems.length ? T.green : T.cyan }}>{rDone}/{routineItems.length}</b></div>
+          </div>
+        </button>
+      </div>
+      {routinesOpen && (
+        <div style={{ ...cardBox, marginTop: 8, padding: "4px 14px" }}>
+          {routineItems.map((it) => {
+            const isDone = !!checks[it.id];
+            return (
+              <button key={it.id} onClick={() => toggle(it.id)} className="aw-row" style={{ width: "100%", display: "flex", alignItems: "center", gap: 11, padding: "11px 0", borderTop: `1px solid ${T.line}`, background: "transparent", border: "none", borderBottom: "none", textAlign: "left", cursor: "pointer", minHeight: 44 }}>
+                <span style={{ flex: "0 0 26px", width: 26, height: 26, borderRadius: "50%", border: `2px solid ${isDone ? T.green : T.line}`, background: isDone ? T.green : "transparent", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  {isDone && <svg width="13" height="13" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#031018" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+                </span>
+                <span style={{ flex: 1, fontSize: 14.5, color: T.ink, textDecoration: isDone ? "line-through" : "none", opacity: isDone ? 0.5 : 1 }}>{it.label}</span>
+              </button>
+            );
+          })}
+        </div>
       )}
 
       {/* BEWEGUNG – Wochenziel mit One-Click-Typ */}
-      <div style={{ ...cardBox, marginTop: 18, padding: "14px 16px" }}>
+      <div style={{ ...cardBox, marginTop: 14, padding: "14px 16px" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
           <div>
             <div style={{ fontSize: 13.5, fontWeight: 700, color: T.ink }}>Bewegung diese Woche</div>
             <div style={{ fontSize: 11.5, color: T.sub, marginTop: 2 }}>{moveToday ? `Heute: ${MOVE_LABEL[moveToday] || "Bewegt"}${moveKcalToday ? ` · ${moveKcalToday} kcal` : ""} ✓` : `Antippen → km/Zeit → kcal. Ziel ${moveGoal}×.`}</div>
           </div>
-          <div style={{ fontFamily: "'Roboto Condensed', 'Roboto', sans-serif", fontSize: 26, fontWeight: 700, color: weekMove >= moveGoal ? T.green : T.cyan, textShadow: `0 0 12px ${(weekMove >= moveGoal ? T.green : T.cyan)}55` }}>{weekMove}<span style={{ fontSize: 14, color: T.sub }}>/{moveGoal}</span></div>
+          <div style={{ fontFamily: RCF, fontSize: 26, fontWeight: 700, color: weekMove >= moveGoal ? T.green : T.cyan, textShadow: `0 0 12px ${(weekMove >= moveGoal ? T.green : T.cyan)}55` }}>{weekMove}<span style={{ fontSize: 14, color: T.sub }}>/{moveGoal}</span></div>
         </div>
         <div style={{ display: "flex", gap: 6, marginTop: 12 }}>
           {Array.from({ length: moveGoal }).map((_, i) => (
@@ -525,6 +521,10 @@ function Heute({ done, total, pct, focus, focusDesc, week7, items, checks, toggl
           })}
         </div>
       </div>
+
+      {!profile.set && (
+        <BalanceCard profile={profile} weightKg={weightKg} intake={intakeKcal} proteinIn={proteinIn} exerciseKcal={moveKcalToday} onOpenProfile={onOpenProfile} onOpenMealLog={onOpenMealLog} />
+      )}
     </>
   );
 }
@@ -688,13 +688,47 @@ function ExIcon({ k }) {
   return (<svg width="30" height="30" viewBox="0 0 24 24"><path d="M3 9v6M6.5 6.5v11M17.5 6.5v11M21 9v6M6.5 12h11" {...p} /></svg>);
 }
 
-function Training({ open, setOpen, onStart }) {
+function Training({ open, setOpen, onStart, todayItems = [], checks = {}, toggle, focus, focusDesc }) {
   const order = ["kraftA", "kraftB", "kraftC", "taichi", "yoga"];
   const sel = open && SESSIONS[open] ? open : null;
   const S = sel ? SESSIONS[sel] : null;
+  const exs = todayItems.filter((i) => i.sport);
+  const exDone = exs.filter((i) => checks[i.id]).length;
   return (
     <>
-      <h3 style={{ ...hStyle, marginTop: 12, marginBottom: 12 }}>Training</h3>
+      {/* HEUTE – Session mit roten Start-Widgets */}
+      {exs.length > 0 && (
+        <>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", marginTop: 12, marginBottom: 8 }}>
+            <h3 style={hStyle}>Heute · {focus}</h3>
+            <span style={{ fontFamily: "'Roboto Condensed', 'Roboto', sans-serif", fontSize: 13, fontWeight: 700, color: exDone === exs.length ? T.green : T.sub }}>{exDone}/{exs.length}</span>
+          </div>
+          {focusDesc && <div style={{ fontSize: 12, color: T.sub, marginTop: -4, marginBottom: 8 }}>{focusDesc}</div>}
+          <div style={{ ...cardBox, marginBottom: 16, padding: "4px 14px" }}>
+            {exs.map((it, i) => {
+              const isDone = !!checks[it.id];
+              return (
+                <div key={it.id} style={{ display: "flex", alignItems: "flex-start", gap: 11, padding: "11px 0", borderTop: i === 0 ? "none" : `1px solid ${T.line}`, minHeight: 44 }}>
+                  <button onClick={() => toggle && toggle(it.id)} className="aw-row" style={{ flex: "0 0 28px", width: 28, height: 28, marginTop: 2, borderRadius: "50%", border: `2px solid ${isDone ? T.green : T.line}`, background: isDone ? T.green : "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: 0 }}>
+                    {isDone && <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#031018" strokeWidth="3.4" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+                  </button>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 15, color: T.ink, fontWeight: 600, lineHeight: 1.3, textDecoration: isDone ? "line-through" : "none", opacity: isDone ? 0.5 : 1 }}>{it.label}</div>
+                    {it.cue && !isDone && <div style={{ fontSize: 12, color: T.sub, marginTop: 3, lineHeight: 1.4 }}>{it.cue}</div>}
+                  </div>
+                  {!isDone && (
+                    <button onClick={() => onStart({ name: it.label, cue: it.cue, reps: it.reps }, it.id)} aria-label="Übung starten" className="aw-row" style={{ flex: "0 0 auto", display: "inline-flex", alignItems: "center", justifyContent: "center", gap: 5, background: T.red, color: "#fff", border: "none", borderRadius: 4, padding: "0 12px", minHeight: 44, fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: `0 3px 10px ${T.red}4d` }}>
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="#fff"><path d="M6 4l14 8-14 8z" /></svg>Start
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      <h3 style={{ ...hStyle, marginTop: 12, marginBottom: 12 }}>Alle Trainings</h3>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         {order.map((k) => {
           const s = SESSIONS[k]; const c = TRAINCOLORS[k]; const active = open === k;
